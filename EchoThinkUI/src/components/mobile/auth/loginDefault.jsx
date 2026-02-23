@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCSRFToken } from "../../CSRF/csrf";
 import { GetIMG } from "../../scripts/GetIMG";
+import { BACKEND_URL, API_URL } from "../../../config";
 import "../styles/global.css";
 import "../styles/loginDefault.css";
 
@@ -16,13 +17,12 @@ const LoginDefault = () => {
   const [formData, setFormData] = useState({ field1: "", field2: "" });
   const navigate = useNavigate();
   const [isValid, setIsValid] = useState(null);
-  const BACKEND_URL = "https://cidivan-production.up.railway.app";
   
     useEffect(() => {
       const validateSession = async () => {
         try {
           // Primeiro: obter o CSRF token (o cookie será setado aqui)
-          await fetch(`${BACKEND_URL}/api/csrf/`, {
+          await fetch(`${API_URL}/csrf/`, {
             method: "GET",
             credentials: "include",
           })
@@ -76,7 +76,7 @@ const LoginDefault = () => {
   });
 
   useEffect(() => {
-    fetch("https://cidivan-production.up.railway.app/api/csrf/", {
+    fetch(`${API_URL}/csrf/`, {
       method: "GET",
       credentials: "include",
     })
@@ -89,7 +89,7 @@ const LoginDefault = () => {
   }, []);
 
   useEffect(() => {
-    document.title = "EchoThink";
+    document.title = "Gelinc";
     const link = document.createElement("link");
     link.rel = "icon";
     link.href = Icon;
@@ -146,7 +146,7 @@ const LoginDefault = () => {
       console.error("CSRF token is not available");
       return;
     }
-    fetch("https://cidivan-production.up.railway.app/api/auth/login/", {
+    fetch(`${API_URL}/auth/login/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -205,7 +205,7 @@ const LoginDefault = () => {
       console.error("Email inválido.");
       return;
     }
-    fetch("https://cidivan-production.up.railway.app/api/auth/register/", {
+    fetch(`${API_URL}/auth/register/`, {
       // ajuste a URL conforme seu backend
       method: "POST",
       headers: {
@@ -228,7 +228,7 @@ const LoginDefault = () => {
   const [mensagem, setMensagem] = useState("");
 
   useEffect(() => {
-    fetch("https://cidivan-production.up.railway.app/api/hello/")
+    fetch(`${API_URL}/hello/`)
       .then((res) => res.json())
       .then((data) => setMensagem(data.message))
       .catch((err) => console.error(err));

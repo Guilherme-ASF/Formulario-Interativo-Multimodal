@@ -297,3 +297,80 @@
     font-size: 1rem;
   }
 }
+/* ========== Menu Admin Responsivo ========== */
+.admin-menu {
+  gap: 0.5rem;
+}
+
+.admin-item {
+  border: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  background: transparent;
+}
+
+.admin-item:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.admin-item:active {
+  transform: scale(0.98);
+}
+
+/* Responsividade adicional */
+@media (max-width: 1440px) {
+  .admin-item h2 {
+    font-size: 0.7rem;
+  }
+  
+  .admin-item {
+    padding: 0.6rem !important;
+  }
+  
+  .admin-item svg {
+    font-size: 1.8rem !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .w-2\/12 {
+    min-width: 120px !important;
+  }
+  
+  .w-10\/12 {
+    width: calc(100% - 120px) !important;
+  }
+  
+  .admin-item h2 {
+    font-size: 0.65rem;
+  }
+  
+  .admin-item svg {
+    font-size: 1.6rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .w-2\/12 {
+    min-width: 100px !important;
+    width: 100px !important;
+  }
+  
+  .w-10\/12 {
+    width: calc(100% - 100px) !important;
+  }
+  
+  .admin-item {
+    padding: 0.5rem !important;
+  }
+  
+  .admin-item h2 {
+    font-size: 0.6rem;
+    margin: 0;
+  }
+  
+  .admin-item svg {
+    font-size: 1.4rem !important;
+    margin-bottom: 0.3rem !important;
+  }
+}

@@ -1,12 +1,58 @@
-# React + Vite
+# EchoThink UI - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application built with React + Vite.
 
-Currently, two official plugins are available:
+## Development Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 1. Environment Configuration
 
-## Expanding the ESLint configuration
+Create a `.env.local` file in the root directory with local development URLs:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```env
+VITE_BACKEND_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8000/api
+```
+
+For production, the `.env.production` file already contains the production URLs.
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Run Development Server
+
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5173`
+
+### 4. Build for Production
+
+```bash
+npm run build
+```
+
+## Configuration
+
+The app uses a centralized configuration system located in `src/config.js`:
+
+- **BACKEND_URL**: Base URL for the backend API (http://localhost:8000 for development, https://cidivan-production.up.railway.app for production)
+- **API_URL**: Full API endpoint URL (BACKEND_URL + /api)
+
+All environment-specific variables are managed through Vite's `import.meta.env` system.
+
+## Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build locally
+- `npm run lint` - Run ESLint
+
+## Notes
+
+- `.env.local` is ignored by git (see .gitignore)
+- Use `.env.example` as a reference for required variables
+- The backend must be running on `http://localhost:8000` for local development

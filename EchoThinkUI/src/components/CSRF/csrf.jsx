@@ -1,3 +1,5 @@
+import { API_URL, BACKEND_URL } from "../../config";
+
 export function getCookie(name) {
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);
@@ -5,14 +7,14 @@ export function getCookie(name) {
 }
 
 export async function getCSRFToken() {
-  await fetch("https://cidivan-production.up.railway.app/api/csrf/", {
+  await fetch(`${API_URL}/csrf/`, {
     method: "GET",
     credentials: "include", // necessário para cookie ser setado
   });
 }
 
 export async function isAuthenticated() {
-  const response = await fetch("https://cidivan-production.up.railway.app/me/", {
+  const response = await fetch(`${BACKEND_URL}/me/`, {
     method: "GET",
     credentials: "include",
   });

@@ -1,11 +1,13 @@
 from pathlib import Path
 import os
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-f($vp@q_0r5c1%mgv$ntfdyh5s5eglzmz1*2o&x4h4mimql_=%'
 
-DEBUG = True  # ⚠️ Alterar para False em produção
+# ⚠️ DEBUG: False em produção, True em desenvolvimento
+DEBUG = not os.environ.get('DATABASE_URL')  # False se estiver no Railway
 
 # Permitir todos os hosts (em produção, especifique os domínios)
 ALLOWED_HOSTS = ["*"]
@@ -98,16 +100,24 @@ ROOT_URLCONF = 'EchoThink.urls'
 WSGI_APPLICATION = 'EchoThink.wsgi.application'
 
 # DATABASE
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'railway',
-        'USER': 'postgres',
-        'PASSWORD': 'ksZDIZPiDVgNYIlXsLcrKcUpUZBqhlBT',
-        'HOST': 'postgres.railway.internal',
-        'PORT': '5432',
+# PostgreSQL no Railway ou SQLite em desenvolvimento
+if os.environ.get('DATABASE_URL'):
+    # Production: Railway fornece DATABASE_URL automaticamente
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.environ.get('DATABASE_URL'),
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
+else:
+    # Development: SQLite
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # PASSWORD VALIDATORS
 AUTH_PASSWORD_VALIDATORS = [

@@ -10,8 +10,7 @@ import ResetPasswordScreen from "../desktop/screens/reset";
 import Unauthorized from "../desktop/screens/Unauthorized";
 import { getCookie } from "../CSRF/csrf";
 import PrivateRouteAdmin from "./PrivateRouteAdmin";
-
-const BACKEND_URL = "https://cidivan-production.up.railway.app";
+import { BACKEND_URL, API_URL } from "../../config";
 
 const PrivateRoute = ({ element: Element }) => {
   const [isValid, setIsValid] = useState(null);
@@ -20,30 +19,24 @@ const PrivateRoute = ({ element: Element }) => {
   useEffect(() => {
     const validateSession = async () => {
       try {
-        await fetch(`${BACKEND_URL}/api/csrf/`, {
+        const csrfRes = await fetch(`${API_URL}/csrf/`, {
           method: "GET",
           credentials: "include",
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            console.log("Token do backend:", data.csrfToken);
-            setCsrfToken(data.csrfToken);
-          })
-          .catch((err) => console.error("Erro ao buscar CSRF:", err));
+        });
+
+        const csrfData = await csrfRes.json();
+        console.log("Token do backend:", csrfData.csrfToken);
+        setCsrfToken(csrfData.csrfToken);
 
         const response = await fetch(`${BACKEND_URL}/me/`, {
           method: "GET",
           headers: {
-            "X-CSRFToken": csrfToken,
+            "X-CSRFToken": csrfData.csrfToken,
           },
           credentials: "include",
         });
 
-        if (response.ok) {
-          setIsValid(true);
-        } else {
-          setIsValid(false);
-        }
+        setIsValid(response.ok);
       } catch (error) {
         console.error("Erro na validação da sessão:", error);
         setIsValid(false);

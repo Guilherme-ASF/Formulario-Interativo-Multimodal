@@ -1,3 +1,14 @@
+# Endpoint para retornar IDs das perguntas já respondidas pelo usuário logado
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def respondidas_usuario(request):
+    user = request.user
+    respondidas = list(UserResponse.objects.filter(user=user).values_list("question_id", flat=True))
+    return Response({"respondidas": respondidas})
 import os
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -5,8 +16,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes
-from .models import Question, Option, UserResponse
-from .serializers import QuestionSerializer, UserResponseSerializer, MultipleUserResponsesSerializer
+from .models import Question, Option, UserResponse, QuestionGroup
+from .serializers import QuestionSerializer, UserResponseSerializer, MultipleUserResponsesSerializer, QuestionGroupSerializer
 from django.http import HttpResponse
 import pandas as pd
 from django.core.files.base import ContentFile
@@ -246,6 +257,209 @@ def registrar_resposta(request):
         return Response({"message": "Resposta registrada com sucesso"}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+# ==================== QUESTION GROUP VIEWS ====================
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def listar_criar_grupos(request):
+    """
+    GET: Lista todos os grupos de perguntas
+    POST: Cria um novo grupo de perguntas
+    """
+    if request.method == "GET":
+        grupos = QuestionGroup.objects.all()
+        serializer = QuestionGroupSerializer(grupos, many=True, context={"request": request})
+        return Response(serializer.data, status=200)
+    
+    elif request.method == "POST":
+        serializer = QuestionGroupSerializer(data=request.data, context={"request": request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def detalhe_grupo(request, pk):
+    """
+    GET: Retorna detalhes de um grupo
+    PATCH: Atualiza um grupo de perguntas
+    DELETE: Deleta um grupo de perguntas
+    """
+    try:
+        grupo = QuestionGroup.objects.get(pk=pk)
+    except QuestionGroup.DoesNotExist:
+        return Response({"error": "Grupo não encontrado."}, status=404)
+    
+    if request.method == "GET":
+        serializer = QuestionGroupSerializer(grupo, context={"request": request})
+        return Response(serializer.data, status=200)
+    
+    elif request.method == "PATCH":
+        serializer = QuestionGroupSerializer(grupo, data=request.data, partial=True, context={"request": request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=200)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == "DELETE":
+        grupo.delete()
+        return Response({"message": "Grupo excluído com sucesso."}, status=204)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grupos_do_usuario(request):
+    """
+    Retorna todos os grupos associados ao usuário logado
+    """
+    grupos = QuestionGroup.objects.filter(users=request.user)
+    serializer = QuestionGroupSerializer(grupos, many=True, context={"request": request})
+    return Response(serializer.data, status=200)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def adicionar_usuario_ao_grupo(request, pk):
+    """
+    Adiciona usuários a um grupo de perguntas
+    Espera: {"user_ids": [1, 2, 3]}
+    """
+    try:
+        grupo = QuestionGroup.objects.get(pk=pk)
+    except QuestionGroup.DoesNotExist:
+        return Response({"error": "Grupo não encontrado."}, status=404)
+    
+    user_ids = request.data.get("user_ids", [])
+    if not user_ids:
+        return Response({"error": "Lista de user_ids é obrigatória."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    from django.contrib.auth.models import User
+    usuarios = User.objects.filter(id__in=user_ids)
+    
+    if not usuarios.exists():
+        return Response({"error": "Nenhum usuário encontrado."}, status=status.HTTP_404_NOT_FOUND)
+    
+    grupo.users.add(*usuarios)
+    serializer = QuestionGroupSerializer(grupo, context={"request": request})
+    return Response(serializer.data, status=200)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remover_usuario_do_grupo(request, pk):
+    """
+    Remove usuários de um grupo de perguntas
+    Espera: {"user_ids": [1, 2, 3]}
+    """
+    try:
+        grupo = QuestionGroup.objects.get(pk=pk)
+    except QuestionGroup.DoesNotExist:
+        return Response({"error": "Grupo não encontrado."}, status=404)
+    
+    user_ids = request.data.get("user_ids", [])
+    if not user_ids:
+        return Response({"error": "Lista de user_ids é obrigatória."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    from django.contrib.auth.models import User
+    usuarios = User.objects.filter(id__in=user_ids)
+    
+    if not usuarios.exists():
+        return Response({"error": "Nenhum usuário encontrado."}, status=status.HTTP_404_NOT_FOUND)
+    
+    grupo.users.remove(*usuarios)
+    serializer = QuestionGroupSerializer(grupo, context={"request": request})
+    return Response(serializer.data, status=200)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def adicionar_pergunta_ao_grupo(request, pk):
+    """
+    Adiciona perguntas a um grupo
+    Espera: {"question_ids": [1, 2, 3]}
+    """
+    try:
+        grupo = QuestionGroup.objects.get(pk=pk)
+    except QuestionGroup.DoesNotExist:
+        return Response({"error": "Grupo não encontrado."}, status=404)
+    
+    question_ids = request.data.get("question_ids", [])
+    if not question_ids:
+        return Response({"error": "Lista de question_ids é obrigatória."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    perguntas = Question.objects.filter(id__in=question_ids)
+    
+    if not perguntas.exists():
+        return Response({"error": "Nenhuma pergunta encontrada."}, status=status.HTTP_404_NOT_FOUND)
+    
+    grupo.questions.add(*perguntas)
+    serializer = QuestionGroupSerializer(grupo, context={"request": request})
+    return Response(serializer.data, status=200)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remover_pergunta_do_grupo(request, pk):
+    """
+    Remove perguntas de um grupo
+    Espera: {"question_ids": [1, 2, 3]}
+    """
+    try:
+        grupo = QuestionGroup.objects.get(pk=pk)
+    except QuestionGroup.DoesNotExist:
+        return Response({"error": "Grupo não encontrado."}, status=404)
+    
+    question_ids = request.data.get("question_ids", [])
+    if not question_ids:
+        return Response({"error": "Lista de question_ids é obrigatória."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    perguntas = Question.objects.filter(id__in=question_ids)
+    
+    if not perguntas.exists():
+        return Response({"error": "Nenhuma pergunta encontrada."}, status=status.HTTP_404_NOT_FOUND)
+    
+    grupo.questions.remove(*perguntas)
+    serializer = QuestionGroupSerializer(grupo, context={"request": request})
+    return Response(serializer.data, status=200)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def perguntas_do_grupo_usuario(request):
+    """
+    Retorna apenas as perguntas dos grupos aos quais o usuário está associado.
+    Útil para a tela de responder perguntas.
+    """
+    user = request.user
+    
+    # Obtém os grupos do usuário
+    grupos_do_usuario = user.question_groups.all()
+    
+    if not grupos_do_usuario.exists():
+        return Response(
+            {"error": "Você não está associado a nenhum grupo de perguntas."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Obtém todas as perguntas dos grupos do usuário
+    perguntas = Question.objects.filter(groups__in=grupos_do_usuario).distinct()
+    
+    # Filtra apenas as perguntas relevantes (opcionalmente)
+    perguntas = perguntas.filter(is_relevant=True)
+    
+    if not perguntas.exists():
+        return Response(
+            {"message": "Nenhuma pergunta disponível no seu grupo."},
+            status=status.HTTP_200_OK
+        )
+    
+    # Serializa as perguntas
+    serializer = QuestionSerializer(perguntas, many=True, context={"request": request})
+    return Response(serializer.data, status=200)
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def registrar_varias_respostas(request):
@@ -255,14 +469,47 @@ def registrar_varias_respostas(request):
     # Pega os IDs das perguntas enviadas
     question_ids = [r.get("question") for r in respostas if r.get("question") is not None]
 
-    # Verifica se já existem respostas do usuário para essas perguntas
-    respostas_existentes = UserResponse.objects.filter(user=user, question_id__in=question_ids)
-
-    if respostas_existentes.exists():
+    # ==================== VALIDAÇÃO: PERGUNTAS DO GRUPO DO USUÁRIO ====================
+    # Obtém os grupos do usuário
+    grupos_do_usuario = user.question_groups.all()
+    
+    # Obtém todas as perguntas dos grupos do usuário
+    perguntas_permitidas = Question.objects.filter(groups__in=grupos_do_usuario).distinct()
+    perguntas_permitidas_ids = set(perguntas_permitidas.values_list('id', flat=True))
+    
+    # Verifica se todas as perguntas estão nos grupos do usuário
+    question_ids_set = set(question_ids)
+    perguntas_nao_autorizadas = question_ids_set - perguntas_permitidas_ids
+    
+    if perguntas_nao_autorizadas:
         return Response(
-            {"error": "Você já enviou respostas para essas perguntas."},
-            status=status.HTTP_400_BAD_REQUEST
+            {
+                "error": f"Você não tem permissão para responder algumas das perguntas. "
+                         f"Perguntas não autorizadas: {list(perguntas_nao_autorizadas)}"
+            },
+            status=status.HTTP_403_FORBIDDEN
         )
+
+    # Verifica se já existem respostas do usuário para essas perguntas
+    # Verifica se já existe resposta para cada pergunta
+    perguntas_com_resposta = set(
+        UserResponse.objects.filter(user=user, question_id__in=question_ids)
+        .values_list('question_id', flat=True)
+    )
+    perguntas_nao_respondidas = [qid for qid in question_ids if qid not in perguntas_com_resposta]
+    if not perguntas_nao_respondidas:
+        return Response(
+            {"error": "Você já enviou respostas para todas essas perguntas.", "respondidas": list(perguntas_com_resposta)},
+            status=status.HTTP_200_OK
+        )
+    # Filtra respostas para só enviar as não respondidas
+    respostas_novas = [r for r in respostas if r.get("question") in perguntas_nao_respondidas]
+    if not respostas_novas:
+        return Response(
+            {"message": "Nenhuma resposta nova enviada.", "respondidas": list(perguntas_com_resposta)},
+            status=status.HTTP_200_OK
+        )
+    respostas = respostas_novas
 
     # Adiciona o usuário nos dados das respostas
     for resposta in respostas:

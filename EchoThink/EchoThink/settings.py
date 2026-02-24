@@ -4,7 +4,7 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-f($vp@q_0r5c1%mgv$ntfdyh5s5eglzmz1*2o&x4h4mimql_=%'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-f($vp@q_0r5c1%mgv$ntfdyh5s5eglzmz1*2o&x4h4mimql_=%')
 
 # ⚠️ DEBUG: False em produção, True em desenvolvimento
 DEBUG = not os.environ.get('DATABASE_URL')  # False se estiver no Railway
@@ -146,6 +146,6 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'cidivanc@gmail.com'
-EMAIL_HOST_PASSWORD = 'tebjhuvzskqhadsh'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'cidivanc@gmail.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'tebjhuvzskqhadsh')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

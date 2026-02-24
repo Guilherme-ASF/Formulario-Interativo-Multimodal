@@ -446,9 +446,8 @@ def perguntas_do_grupo_usuario(request):
     
     # Obtém todas as perguntas dos grupos do usuário
     perguntas = Question.objects.filter(groups__in=grupos_do_usuario).distinct()
-    
-    # Filtra apenas as perguntas relevantes (opcionalmente)
-    perguntas = perguntas.filter(is_relevant=True)
+    # Filtra apenas as perguntas relevantes (opcionalmente) e embaralha a ordem
+    perguntas = perguntas.filter(is_relevant=True).order_by('?')
     
     if not perguntas.exists():
         return Response(

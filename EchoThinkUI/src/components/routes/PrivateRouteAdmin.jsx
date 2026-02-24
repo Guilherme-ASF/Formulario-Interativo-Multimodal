@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Unauthorized from "../desktop/screens/Unauthorized"; // ou uma tela específica de "sem acesso"
 import LoadingScreen from "../desktop/screens/loading"; // ou uma tela específica de "sem acesso"
-
-const BACKEND_URL = "https://cidivan-production.up.railway.app";
+import { BACKEND_URL } from "../../config";
 
 const PrivateRouteAdmin = ({ element: Element }) => {
   const [isValid, setIsValid] = useState(null);

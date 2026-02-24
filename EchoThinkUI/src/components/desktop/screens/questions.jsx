@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { getCSRFToken } from "../../CSRF/csrf";
 import { GetIMG } from "../../scripts/GetIMG";
+import { BACKEND_URL, API_URL } from "../../../config";
 import "../styles/global.css";
 import "../styles/loginDefault.css";
 
@@ -14,17 +15,30 @@ const LoginDefault = () => {
   const [csrfToken, setCsrfToken] = useState("");
   const [respostaSelecionada, setRespostaSelecionada] = useState(null);
   const [respostas, setRespostas] = useState([]);
+  const [respondidas, setRespondidas] = useState([]); // armazena IDs das perguntas já respondidas
   const [startTime, setStartTime] = useState(null);
   const [IndicePergunta, setIndicePergunta] = useState(0);
   const [ListaPerguntas, setListaPerguntas] = useState([]);
   const [isValid, setIsValid] = useState(null);
   const [indiceTela, setIndiceTela] = useState(0);
+  const [mensagemErro, setMensagemErro] = useState("");
 
   const [audioConcluido, setAudioConcluido] = useState(true); // true por padrão (perguntas sem áudio)
   const audioRef = useRef(null);
   const audioTimeoutRef = useRef(null);
 
-  const BACKEND_URL = "https://cidivan-production.up.railway.app";
+  // Garante que nunca renderiza pergunta já respondida
+  useEffect(() => {
+    if (
+      Perguntas &&
+      ListaPerguntas.length > 0 &&
+      IndicePergunta < ListaPerguntas.length &&
+      respondidas.includes(ListaPerguntas[IndicePergunta]?.id)
+    ) {
+      avancarParaProximaNaoRespondida();
+    }
+  }, [IndicePergunta, respondidas, ListaPerguntas, Perguntas]);
+
 
   // telas (corrigi class -> className)
   const telas = [
@@ -120,7 +134,7 @@ const LoginDefault = () => {
   useEffect(() => {
     const validateSession = async () => {
       try {
-        const tokenRes = await fetch(`${BACKEND_URL}/api/csrf/`, {
+        const tokenRes = await fetch(`${API_URL}/csrf/`, {
           method: "GET",
           credentials: "include",
         });
@@ -155,7 +169,7 @@ const LoginDefault = () => {
      Load inicial, imagens, perguntas
      -------------------------- */
   useEffect(() => {
-    document.title = "EchoThink";
+    document.title = "Gelinc";
     const link = document.createElement("link");
     link.rel = "icon";
     link.href = Icon;
@@ -181,24 +195,65 @@ const LoginDefault = () => {
   }, [Icon]);
 
   /* --------------------------
-     Carrega perguntas do backend
+     Carrega perguntas do grupo do usuário
      -------------------------- */
   const fetchPerguntas = async () => {
     try {
+      // Busca perguntas do grupo
       const response = await fetch(
-        `${BACKEND_URL}/api/questions/listar-perguntas/`,
+        `${API_URL}/questions/perguntas-do-grupo/`,
         {
           method: "GET",
           credentials: "include",
         }
       );
-      if (!response.ok) throw new Error("Erro ao carregar perguntas");
-      const data = await response.json();
+      let data = null;
+      let errorMsg = null;
+      try {
+        data = await response.json();
+      } catch (e) {
+        errorMsg = "Resposta inválida do servidor.";
+      }
+      if (!response.ok) {
+        if (data && data.error) {
+          setMensagemErro(data.error);
+        } else if (errorMsg) {
+          setMensagemErro(errorMsg);
+        } else {
+          setMensagemErro("Erro ao carregar perguntas.");
+        }
+        setListaPerguntas([]);
+        setError(true);
+        return;
+      }
+      if (!Array.isArray(data)) {
+        setMensagemErro(data && data.message ? data.message : "Nenhuma pergunta disponível no seu grupo.");
+        setListaPerguntas([]);
+        return;
+      }
       setListaPerguntas(data);
-      console.log("Perguntas carregadas:", data);
+      setMensagemErro("");
+      setError(false);
+      setIndicePergunta(0);
+
+      // Busca IDs das perguntas já respondidas pelo usuário
+      const respRespondidas = await fetch(`${API_URL}/questions/respondidas-usuario/`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (respRespondidas.ok) {
+        const dataResp = await respRespondidas.json();
+        // espera-se que o backend retorne { respondidas: [id1, id2, ...] }
+        setRespondidas(Array.isArray(dataResp.respondidas) ? dataResp.respondidas : []);
+      } else {
+        setRespondidas([]);
+      }
+
+      console.log("Perguntas do grupo carregadas:", data);
     } catch (error) {
       console.error(error);
-      alert("Erro ao carregar perguntas");
+      setMensagemErro(error.message || "Erro desconhecido ao carregar perguntas.");
+      setError(true);
     }
   };
 
@@ -306,38 +361,63 @@ const LoginDefault = () => {
      Avançar para próxima pergunta (aceita override de resposta)
      -------------------------- */
   const proximaPergunta = (respostaOverride = null) => {
-    // Proteção extra: só permitir avançar se startTime estiver definido
     if (!startTime) {
       console.warn("Tentou avançar sem startTime definido.");
       return;
     }
 
-    const endTime = Date.now();
-    const tempoRespostaMs = endTime - startTime; // em milissegundos
-
     const pergunta = ListaPerguntas[IndicePergunta];
+    if (!pergunta) return;
+    // Se já respondeu, pula para próxima
+    if (respondidas.includes(pergunta.id)) {
+      avancarParaProximaNaoRespondida();
+      return;
+    }
+
+    const endTime = Date.now();
+    const tempoRespostaMs = endTime - startTime;
     const respostaFinal = respostaOverride ?? respostaSelecionada;
 
     const respostaAtual = {
       perguntaId: pergunta.id,
       perguntaTexto: pergunta.question || pergunta.title,
       resposta: respostaFinal,
-      tempoEmMilissegundos: tempoRespostaMs, // em ms
+      tempoEmMilissegundos: tempoRespostaMs,
     };
 
-    const novasRespostas = [...respostas, respostaAtual];
-    setRespostas(novasRespostas);
+    // Atualiza respondidas e respostas ANTES de avançar
+    setRespostas((prevRespostas) => {
+      const novasRespostas = [...prevRespostas, respostaAtual];
+      setRespondidas((prev) => {
+        const jaRespondida = prev.includes(pergunta.id);
+        if (!jaRespondida) {
+          // Só avança se não respondeu ainda
+          setTimeout(() => {
+            avancarParaProximaNaoRespondida(novasRespostas);
+          }, 100);
+        }
+        return jaRespondida ? prev : [...prev, pergunta.id];
+      });
+      return novasRespostas;
+    });
+  };
 
-    if (IndicePergunta + 1 < ListaPerguntas.length) {
-      setIndicePergunta((prev) => prev + 1);
+  // Função para avançar para a próxima pergunta não respondida
+  const avancarParaProximaNaoRespondida = (respostasParaEnviar = respostas) => {
+    let proxima = IndicePergunta + 1;
+    while (proxima < ListaPerguntas.length && respondidas.includes(ListaPerguntas[proxima].id)) {
+      proxima++;
+    }
+    if (proxima < ListaPerguntas.length) {
+      setIndicePergunta(proxima);
       setRespostaSelecionada(null);
       setStartTime(null);
-      setAudioConcluido(true); // será atualizado pelo useEffect que observa IndicePergunta
+      setAudioConcluido(true);
     } else {
-      // fim das perguntas
+      // Todas respondidas
       setPerguntas(false);
       setFinalizacao(true);
-      enviarRespostas(novasRespostas);
+      enviarRespostas(respostasParaEnviar);
     }
   };
 
@@ -355,7 +435,7 @@ const LoginDefault = () => {
     try {
       console.log("Enviando respostas:", payload);
       const response = await fetch(
-        `${BACKEND_URL}/api/questions/responder-multiplo/`,
+        `${API_URL}/questions/responder-multiplo/`,
         {
           method: "POST",
           headers: {
@@ -368,19 +448,22 @@ const LoginDefault = () => {
       );
 
       if (response.ok) {
-        alert("Respostas enviadas com sucesso!");
+        setMensagemErro("");
+        setFinalizacao(true);
       } else {
         let errText =
-          "Respostas não enviadas. Pois ja tem registro para este usuário.";
+          "Respostas não enviadas. Pois já tem registro para este usuário.";
         try {
           const data = await response.json();
           errText = data.message || data.detail || errText;
         } catch {}
-        alert(errText);
+        setMensagemErro(errText);
+        setFinalizacao(false);
       }
     } catch (err) {
       console.error("Erro ao enviar respostas:", err);
-      alert("Erro ao enviar respostas. Veja o console para detalhes.");
+      setMensagemErro("Erro ao enviar respostas. Veja o console para detalhes.");
+      setFinalizacao(false);
     }
   };
 
@@ -389,7 +472,7 @@ const LoginDefault = () => {
      -------------------------- */
   const handleLogout = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/logout/`, {
+      const response = await fetch(`${API_URL}/auth/logout/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -398,11 +481,10 @@ const LoginDefault = () => {
       });
 
       if (response.ok) {
-        alert("Logout realizado com sucesso!");
         window.location.href = "/";
       } else {
         const data = await response.json();
-        alert("Erro ao deslogar: " + (data.mensagem || "Erro desconhecido"));
+        setMensagemErro("Erro ao deslogar: " + (data.mensagem || "Erro desconhecido"));
       }
     } catch (error) {
       console.error("Erro no logout:", error);
@@ -527,8 +609,8 @@ const LoginDefault = () => {
       <section className="w-full flex items-center justify-center h-full">
         {Instrucao && (
           <div className="w-full max-w-7xl h-full flex items-center justify-center">
-            <div className="w-full max-w-4xl borderlaran">
-              <div className="w-full max-w-4xl bg-Secundary flex flex-col gap-6 p-6 rounded-2xl shadow-lg">
+            <div className="w-full max-w-2xl borderlaran mx-auto">
+              <div className="w-full bg-Secundary flex flex-col gap-4 p-4 sm:p-6 rounded-2xl shadow-lg">
                 {/* Botão sair */}
                 <div className="flex justify-end">
                   <button
@@ -540,26 +622,25 @@ const LoginDefault = () => {
                 </div>
 
                 {/* Logo */}
-                <div className="flex justify-center">
+                <div className="flex justify-center mb-2">
                   <img
                     src={Logo}
                     alt="logo"
-                    className="max-w-24 w-full object-contain"
+                    className="max-w-[80px] w-full object-contain"
                   />
                 </div>
 
-                <div className="text-center text-white flex flex-col gap-4">
-                  <h1 className="text-2xl sm:text-3xl font-bold">
+                <div className="text-center text-white flex flex-col gap-2">
+                  <h1 className="text-xl sm:text-2xl font-bold mb-1">
                     {telas[indiceTela].titulo}
                   </h1>
                   <div
-                    className="text-base sm:text-lg leading-relaxed text-justify 
-                px-2 sm:px-6 min-h-[120px]"
+                    className="text-base sm:text-lg leading-relaxed text-justify px-1 sm:px-4"
                   >
                     {telas[indiceTela].texto}
                   </div>
 
-                  <div className="flex justify-center gap-2 mt-2">
+                  <div className="flex justify-center gap-2 mt-2 mb-1">
                     {telas.map((_, i) => (
                       <span
                         key={i}
@@ -572,7 +653,7 @@ const LoginDefault = () => {
                     ))}
                   </div>
 
-                  <div className="flex justify-center gap-4 mt-4">
+                  <div className="flex justify-center gap-4 mt-2">
                     {indiceTela > 0 && indiceTela < telas.length - 1 && (
                       <button
                         className="px-5 py-2 bg-gray-500 text-white rounded font-medium hover:bg-gray-600 transition"
@@ -613,8 +694,31 @@ const LoginDefault = () => {
           <div className="w-full max-w-7xl h-full flex items-center justify-center">
             <div className="borderlaran max-w-4xl w-full">
               <div className="w-full max-w-4xl bg-Secundary p-6 flex flex-col items-center gap-6">
-                {ListaPerguntas.length === 0 ? (
-                  <p>Carregando perguntas...</p>
+                {mensagemErro ? (
+                  <>
+                    <p className="text-red-600 text-lg font-semibold text-center">{mensagemErro}</p>
+                    <button
+                      className="px-6 py-2 bg-Button text-black rounded font-bold hover:bg-gray-200 transition mt-4"
+                      onClick={handleLogout}
+                    >
+                      Sair
+                    </button>
+                  </>
+                ) : ListaPerguntas.length === 0 ? (
+                  <p>Nenhuma pergunta disponível para você.</p>
+                ) : respondidas.length >= ListaPerguntas.length ? (
+                  <>
+                    <p className="text-green-600 text-lg font-semibold text-center">Você já respondeu todas as perguntas disponíveis.</p>
+                    {mensagemErro && (
+                      <p className="text-red-600 text-center mt-2">{mensagemErro}</p>
+                    )}
+                    <button
+                      className="px-6 py-2 bg-Button text-black rounded font-bold hover:bg-gray-200 transition mt-4"
+                      onClick={handleLogout}
+                    >
+                      Sair
+                    </button>
+                  </>
                 ) : (
                   renderPergunta(ListaPerguntas[IndicePergunta])
                 )}
@@ -638,6 +742,22 @@ const LoginDefault = () => {
                 <p className="text-center">
                   Suas respostas foram enviadas com sucesso.
                 </p>
+                {respondidas.length > 0 && ListaPerguntas.length > 0 && (
+                  <div className="w-full max-w-xl mx-auto bg-white/10 rounded-lg p-4 mt-2">
+                    <h2 className="text-lg font-semibold mb-2 text-center text-white">Perguntas já respondidas:</h2>
+                    <ul className="list-disc pl-6 text-white">
+                      {ListaPerguntas.filter(q => respondidas.includes(q.id)).map(q => (
+                        <li key={q.id}>
+                          <span className="font-mono text-xs text-gray-300 mr-2">#{q.id}</span>
+                          {q.title || q.question || <span className="italic text-gray-400">(sem nome)</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {mensagemErro && (
+                  <p className="text-red-600 text-center mt-2">{mensagemErro}</p>
+                )}
                 <button
                   className="bg-Button px-6 py-2 rounded font-bold hover:bg-gray-200 transition"
                   onClick={handleLogout}

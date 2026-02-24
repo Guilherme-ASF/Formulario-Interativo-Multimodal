@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCSRFToken } from "../../CSRF/csrf";
 import { GetIMG } from "../../scripts/GetIMG";
+import { BACKEND_URL, API_URL } from "../../../config";
 import "../styles/global.css";
 import "../styles/loginDefault.css";
 
@@ -17,75 +18,40 @@ const LoginDefault = () => {
   const [startTime, setStartTime] = useState(null);
   const [IndicePergunta, setIndicePergunta] = useState(0);
 
-  const [ListaPerguntas, setListaPerguntas] = useState([
-    {
-      id: 1,
-      title: "Pergunta 1",
-      question: "Qual dessas alternativas você prefere?",
-      image: null,
-      audio: null,
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-    {
-      id: 2,
-      title: "Pergunta 2",
-      question: null,
-      image: "https://via.placeholder.com/150",
-      audio: null,
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-    {
-      id: 3,
-      title: "Pergunta 3",
-      question: null,
-      image: null,
-      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-    {
-      id: 4,
-      title: "Pergunta 4",
-      question: "Observe a imagem e escolha a alternativa correta.",
-      image: "https://via.placeholder.com/150",
-      audio: null,
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-    {
-      id: 5,
-      title: "Pergunta 5",
-      question: "Ouça o áudio e escolha a alternativa correta.",
-      image: null,
-      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-    {
-      id: 6,
-      title: "Pergunta 6",
-      question: "Veja a imagem e escute o áudio antes de responder.",
-      image: "https://via.placeholder.com/150",
-      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-    {
-      id: 7,
-      title: "Pergunta 7",
-      question: null,
-      image: "https://via.placeholder.com/150",
-      audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-    {
-      id: 8,
-      title: "Pergunta 8",
-      question: "Apenas texto, sem imagem ou áudio.",
-      image: null,
-      audio: null,
-      options: ["Alternativa 1", "Alternativa 2", "Alternativa 3"],
-    },
-  ]);
+  const [ListaPerguntas, setListaPerguntas] = useState([]);
+
+  /* --------------------------
+     Carrega perguntas do grupo do usuário
+     -------------------------- */
+  const fetchPerguntas = async () => {
+    try {
+      const response = await fetch(
+        `${API_URL}/questions/perguntas-do-grupo/`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erro ao carregar perguntas");
+      }
+      const data = await response.json();
+      
+      if (!Array.isArray(data)) {
+        throw new Error("Nenhuma pergunta disponível no seu grupo.");
+      }
+      
+      setListaPerguntas(data);
+      console.log("Perguntas do grupo carregadas:", data);
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao carregar perguntas: " + error.message);
+    }
+  };
 
   useEffect(() => {
-    document.title = "EchoThink";
+    document.title = "Gelinc";
     const link = document.createElement("link");
     link.rel = "icon";
     link.href = Icon;
@@ -103,6 +69,9 @@ const LoginDefault = () => {
       setLogo(Logo);
     };
     loadImages();
+
+    // Carrega as perguntas do grupo do usuário
+    fetchPerguntas();
   }, []);
 
   useEffect(() => {
@@ -123,7 +92,7 @@ const LoginDefault = () => {
 
   const enviarRespostas = async (todasRespostas) => {
     try {
-      const response = await fetch("/api/salvar-respostas", {
+      const response = await fetch(`${API_URL}/salvar-respostas`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

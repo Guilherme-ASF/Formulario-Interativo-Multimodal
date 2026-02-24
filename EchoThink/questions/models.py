@@ -75,3 +75,20 @@ class UserResponse(models.Model):
     def __str__(self):
         # seu código tinha "self.question.texto" mas esse campo não existe
         return f"{self.user.username} → {self.question.title or self.question.id}"
+
+class QuestionGroup(models.Model):
+    """
+    Grupo de perguntas que pode ser associado a múltiplos usuários
+    """
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    questions = models.ManyToManyField(Question, related_name="groups", blank=True)
+    users = models.ManyToManyField(User, related_name="question_groups", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ["-created_at"]

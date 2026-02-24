@@ -13,10 +13,11 @@ const LoginDefault = () => {
   const [addPerguntas, setaddPerguntas] = useState(false);
   const [listarPerguntas, setlistarPerguntas] = useState(false);
   const [listarParticipantes, setlistarParticipantes] = useState(false);
+  const [listarGrupos, setlistarGrupos] = useState(false);
   const [csrfToken, setCsrfToken] = useState("");
 
   useEffect(() => {
-    document.title = "EchoThink";
+    document.title = "Gelinc";
     const link = document.createElement("link");
     link.rel = "icon";
     link.href = Icon;
@@ -42,6 +43,7 @@ const LoginDefault = () => {
     setaddPerguntas(false);
     setlistarPerguntas(false);
     setlistarParticipantes(false);
+    setlistarGrupos(false);
   };
 
   const ShowHome = (e) => {
@@ -74,10 +76,16 @@ const LoginDefault = () => {
     setlistarParticipantes(true);
   };
 
+  const ShowListarGrupos = (e) => {
+    e.preventDefault();
+    resetViews();
+    setlistarGrupos(true);
+  };
+
   return (
     <section className="w-full h-screen flex flex-col bg-Primary">
       <section className="w-screen flex items-center justify-center">
-        {(home || relatorio || addPerguntas || listarPerguntas || listarParticipantes) && (
+        {(home || relatorio || addPerguntas || listarPerguntas || listarParticipantes || listarGrupos) && (
           <div className="w-6/12 h-screen flex items-center justify-center">
             <div className="border w-full items-center justify-center flex flex-col border-Config">
               <div className="border w-full flex bg-Secundary justify-between">
@@ -96,6 +104,9 @@ const LoginDefault = () => {
                   </div>
                   <div className="border radius20px p-2 cursor-pointer" onClick={ShowRelatorio}>
                     <h2>Relatório</h2>
+                  </div>
+                  <div className="border radius20px p-2 cursor-pointer" onClick={ShowListarGrupos}>
+                    <h2>Grupos</h2>
                   </div>
                 </div>
 
@@ -125,6 +136,12 @@ const LoginDefault = () => {
                     <>
                       <h1>Lista de Participantes</h1>
                       <p>(aqui virá a lista dos participantes...)</p>
+                    </>
+                  )}
+                  {listarGrupos && (
+                    <>
+                      <h1>Grupos de Perguntas</h1>
+                      <p>Funcionalidade de gerenciamento de grupos disponível na versão desktop do admin.</p>
                     </>
                   )}
                 </div>

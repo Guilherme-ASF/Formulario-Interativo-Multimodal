@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { BACKEND_URL, API_URL } from "../../../config";
 
 export default function RedefinirSenha() {
   const [novaSenha, setNovaSenha] = useState("");
@@ -9,12 +10,11 @@ export default function RedefinirSenha() {
   const [csrfToken, setCsrfToken] = useState("");
   const [isValid, setIsValid] = useState(null);
   const navigate = useNavigate();
-  const BACKEND_URL = "https://cidivan-production.up.railway.app";
       useEffect(() => {
         const validateSession = async () => {
           try {
             // Primeiro: obter o CSRF token (o cookie será setado aqui)
-            await fetch(`${BACKEND_URL}/api/csrf/`, {
+            await fetch(`${API_URL}/csrf/`, {
               method: "GET",
               credentials: "include",
             })
@@ -72,7 +72,7 @@ export default function RedefinirSenha() {
     }
 
     try {
-      const response = await fetch("https://cidivan-production.up.railway.app/api/auth/redefinir-senha/", {
+      const response = await fetch(`${API_URL}/auth/redefinir-senha/`, {
         method: "POST",
         credentials: "include",
         headers: {

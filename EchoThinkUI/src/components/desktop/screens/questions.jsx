@@ -742,19 +742,6 @@ const LoginDefault = () => {
                 <p className="text-center">
                   Suas respostas foram enviadas com sucesso.
                 </p>
-                {respondidas.length > 0 && ListaPerguntas.length > 0 && (
-                  <div className="w-full max-w-xl mx-auto bg-white/10 rounded-lg p-4 mt-2">
-                    <h2 className="text-lg font-semibold mb-2 text-center text-white">Perguntas já respondidas:</h2>
-                    <ul className="list-disc pl-6 text-white">
-                      {ListaPerguntas.filter(q => respondidas.includes(q.id)).map(q => (
-                        <li key={q.id}>
-                          <span className="font-mono text-xs text-gray-300 mr-2">#{q.id}</span>
-                          {q.title || q.question || <span className="italic text-gray-400">(sem nome)</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
                 {mensagemErro && (
                   <p className="text-red-600 text-center mt-2">{mensagemErro}</p>
                 )}

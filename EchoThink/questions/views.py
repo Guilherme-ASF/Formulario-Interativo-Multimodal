@@ -498,14 +498,14 @@ def registrar_varias_respostas(request):
     perguntas_nao_respondidas = [qid for qid in question_ids if qid not in perguntas_com_resposta]
     if not perguntas_nao_respondidas:
         return Response(
-            {"error": "Você já enviou respostas para todas essas perguntas.", "respondidas": list(perguntas_com_resposta)},
+            {"message": "Você já respondeu todas as perguntas."},
             status=status.HTTP_200_OK
         )
     # Filtra respostas para só enviar as não respondidas
     respostas_novas = [r for r in respostas if r.get("question") in perguntas_nao_respondidas]
     if not respostas_novas:
         return Response(
-            {"message": "Nenhuma resposta nova enviada.", "respondidas": list(perguntas_com_resposta)},
+            {"message": "Você já respondeu todas as perguntas."},
             status=status.HTTP_200_OK
         )
     respostas = respostas_novas

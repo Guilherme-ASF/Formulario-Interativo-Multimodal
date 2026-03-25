@@ -195,7 +195,25 @@ def gerar_relatorio_respostas_pivotado(request, formato, group_id=None):
         except QuestionGroup.DoesNotExist:
             return HttpResponse("Grupo não encontrado.", status=404)
 
-        respostas = UserResponse.objects.filter(group_id=group_id, question__is_relevant=True).values(
+        respostas_grupo = UserResponse.objects.filter(group_id=group_id)
+
+        # Compatibilidade com dados antigos (antes do campo group):
+        # tenta mapear respostas sem grupo para usuários/perguntas que pertencem ao grupo atual.
+        if not respostas_grupo.exists():
+            respostas_grupo = UserResponse.objects.filter(
+                group__isnull=True,
+                user__in=grupo.users.all(),
+                question__in=grupo.questions.all(),
+            )
+
+        if not respostas_grupo.exists():
+            return HttpResponse("Nenhuma resposta encontrada para este grupo", status=404)
+
+        # Prioriza perguntas relevantes, mas não bloqueia relatório quando nenhuma está marcada.
+        respostas_relevantes = respostas_grupo.filter(question__is_relevant=True)
+        respostas_base = respostas_relevantes if respostas_relevantes.exists() else respostas_grupo
+
+        respostas = respostas_base.values(
             "user__username",
             "question__id",
             "question__title",
@@ -205,9 +223,6 @@ def gerar_relatorio_respostas_pivotado(request, formato, group_id=None):
             "tempo_resposta",
             "data_resposta",
         )
-
-        if not respostas.exists():
-            return HttpResponse("Nenhuma resposta relevante encontrada", status=404)
 
         df = pd.DataFrame(list(respostas))
         df["resposta_final"] = df["resposta_opcao"].combine_first(df["resposta_texto"])

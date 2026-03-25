@@ -2,11 +2,10 @@ import os
 import base64
 from rest_framework import serializers
 from .models import Question, Option, UserResponse, QuestionGroup
-from decimal import Decimal, getcontext
+from decimal import getcontext
 from django.contrib.auth.models import User
 
-
-getcontext().prec = 10  # garante precisão suficiente
+getcontext().prec = 10
 
 
 class OptionSerializer(serializers.ModelSerializer):
@@ -18,11 +17,8 @@ class OptionSerializer(serializers.ModelSerializer):
 class QuestionSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     audio_url = serializers.SerializerMethodField()
-
-    # ✅ novos campos: nomes reais
     image_filename = serializers.SerializerMethodField()
     audio_filename = serializers.SerializerMethodField()
-
     options = OptionSerializer(many=True, read_only=True)
 
     class Meta:
@@ -40,44 +36,67 @@ class QuestionSerializer(serializers.ModelSerializer):
         ]
 
     def get_image_filename(self, obj):
-        # se você salvou no FileField, dá pra pegar o nome real daqui
-        if obj.image and getattr(obj.image, "name", None):
+        if getattr(obj, "image", None) and getattr(obj.image, "name", None):
             return os.path.basename(obj.image.name)
         return None
 
     def get_audio_filename(self, obj):
-        if obj.audio and getattr(obj.audio, "name", None):
+        if getattr(obj, "audio", None) and getattr(obj.audio, "name", None):
             return os.path.basename(obj.audio.name)
         return None
+
+    def _safe_base64(self, content):
+        if not content:
+            return None
+        try:
+            return base64.b64encode(content).decode("utf-8")
+        except Exception:
+            return None
 
     def get_image_url(self, obj):
         request = self.context.get("request")
 
-        # 1) banco
-        if getattr(obj, "image_bytes", None) and getattr(obj, "image_mime", None):
-            b64 = base64.b64encode(obj.image_bytes).decode("utf-8")
-            return f"data:{obj.image_mime};base64,{b64}"
+        # Prioriza arquivo em disco / storage
+        if getattr(obj, "image", None):
+            try:
+                if obj.image.name and request:
+                    return request.build_absolute_uri(obj.image.url)
+            except Exception:
+                pass
 
-        # 2) filesystem
-        if obj.image and request:
-            return request.build_absolute_uri(obj.image.url)
+        # Fallback para bytes no banco
+        image_bytes = getattr(obj, "image_bytes", None)
+        image_mime = getattr(obj, "image_mime", None)
+
+        if image_bytes and image_mime:
+            b64 = self._safe_base64(image_bytes)
+            if b64:
+                return f"data:{image_mime};base64,{b64}"
 
         return None
 
     def get_audio_url(self, obj):
         request = self.context.get("request")
 
-        # 1) banco
-        if getattr(obj, "audio_bytes", None) and getattr(obj, "audio_mime", None):
-            b64 = base64.b64encode(obj.audio_bytes).decode("utf-8")
-            return f"data:{obj.audio_mime};base64,{b64}"
+        # Prioriza arquivo em disco / storage
+        if getattr(obj, "audio", None):
+            try:
+                if obj.audio.name and request:
+                    return request.build_absolute_uri(obj.audio.url)
+            except Exception:
+                pass
 
-        # 2) filesystem
-        if obj.audio and request:
-            return request.build_absolute_uri(obj.audio.url)
+        # Fallback para bytes no banco
+        audio_bytes = getattr(obj, "audio_bytes", None)
+        audio_mime = getattr(obj, "audio_mime", None)
+
+        if audio_bytes and audio_mime:
+            b64 = self._safe_base64(audio_bytes)
+            if b64:
+                return f"data:{audio_mime};base64,{b64}"
 
         return None
-    
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -88,19 +107,20 @@ class UserSerializer(serializers.ModelSerializer):
 class QuestionGroupSerializer(serializers.ModelSerializer):
     questions = QuestionSerializer(many=True, read_only=True)
     users = UserSerializer(many=True, read_only=True)
+
     question_ids = serializers.PrimaryKeyRelatedField(
         queryset=Question.objects.all(),
         write_only=True,
         required=False,
         many=True,
-        source='questions'
+        source="questions",
     )
     user_ids = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
         write_only=True,
         required=False,
         many=True,
-        source='users'
+        source="users",
     )
 
     class Meta:
@@ -119,29 +139,27 @@ class QuestionGroupSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at"]
 
     def create(self, validated_data):
-        questions_data = validated_data.pop('questions', [])
-        users_data = validated_data.pop('users', [])
-        
+        questions_data = validated_data.pop("questions", [])
+        users_data = validated_data.pop("users", [])
+
         group = QuestionGroup.objects.create(**validated_data)
         group.questions.set(questions_data)
         group.users.set(users_data)
-        
+
         return group
 
     def update(self, instance, validated_data):
-        questions_data = validated_data.pop('questions', None)
-        users_data = validated_data.pop('users', None)
-        
-        # Atualiza campos simples
+        questions_data = validated_data.pop("questions", None)
+        users_data = validated_data.pop("users", None)
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        
-        # Atualiza relacionamentos
+
         if questions_data is not None:
             instance.questions.set(questions_data)
         if users_data is not None:
             instance.users.set(users_data)
-        
+
         instance.save()
         return instance
 
@@ -149,7 +167,15 @@ class QuestionGroupSerializer(serializers.ModelSerializer):
 class UserResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserResponse
-        fields = ["id", "user", "question", "resposta_texto", "resposta_opcao", "tempo_resposta", "data_resposta"]
+        fields = [
+            "id",
+            "user",
+            "question",
+            "resposta_texto",
+            "resposta_opcao",
+            "tempo_resposta",
+            "data_resposta",
+        ]
 
 
 class MultipleUserResponsesSerializer(serializers.Serializer):
@@ -157,10 +183,5 @@ class MultipleUserResponsesSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         respostas_data = validated_data.pop("respostas")
-        respostas_objs = []
-
-        for item in respostas_data:
-            # tempo_resposta já foi formatado na view
-            respostas_objs.append(UserResponse(**item))
-
+        respostas_objs = [UserResponse(**item) for item in respostas_data]
         return UserResponse.objects.bulk_create(respostas_objs)

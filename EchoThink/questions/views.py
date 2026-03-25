@@ -1,4 +1,5 @@
 # Endpoint para retornar IDs das perguntas já respondidas pelo usuário logado
+import random
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -434,30 +435,43 @@ def perguntas_do_grupo_usuario(request):
     Útil para a tela de responder perguntas.
     """
     user = request.user
-    
-    # Obtém os grupos do usuário
-    grupos_do_usuario = user.question_groups.all()
-    
-    if not grupos_do_usuario.exists():
+
+    # Pega só os IDs dos grupos do usuário
+    grupos_ids = list(user.question_groups.values_list("id", flat=True))
+
+    if not grupos_ids:
         return Response(
             {"error": "Você não está associado a nenhum grupo de perguntas."},
             status=status.HTTP_404_NOT_FOUND
         )
-    
-    # Obtém todas as perguntas dos grupos do usuário
-    perguntas = Question.objects.filter(groups__in=grupos_do_usuario).distinct()
-    # Filtra apenas as perguntas relevantes (opcionalmente) e embaralha a ordem
-    perguntas = perguntas.filter(is_relevant=True).order_by('?')
-    
-    if not perguntas.exists():
+
+    # Busca perguntas relevantes dos grupos do usuário
+    # prefetch_related evita N+1 nas opções
+    perguntas_qs = (
+        Question.objects
+        .filter(groups__id__in=grupos_ids, is_relevant=True)
+        .distinct()
+        .prefetch_related("options")
+    )
+
+    # Converte para lista e embaralha em memória
+    perguntas = list(perguntas_qs)
+
+    if not perguntas:
         return Response(
             {"message": "Nenhuma pergunta disponível no seu grupo."},
             status=status.HTTP_200_OK
         )
-    
-    # Serializa as perguntas
-    serializer = QuestionSerializer(perguntas, many=True, context={"request": request})
-    return Response(serializer.data, status=200)
+
+    random.shuffle(perguntas)
+
+    serializer = QuestionSerializer(
+        perguntas,
+        many=True,
+        context={"request": request}
+    )
+
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])

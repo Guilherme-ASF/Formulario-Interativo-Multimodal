@@ -1,8 +1,8 @@
 # Endpoint para retornar IDs das perguntas já respondidas pelo usuário logado
-import random
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+import traceback
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -174,81 +174,200 @@ def marcar_relevante(request, pk):
     return Response({"mensagem": "Relevância atualizada com sucesso"})
 
 def gerar_relatorio_respostas_pivotado(request, formato):
-    respostas = UserResponse.objects.filter(question__is_relevant=True).values(
-        "user__username",
-        "question__id",
-        "question__title",
-        "question__audio",
-        "resposta_texto",
-        "resposta_opcao",
-        "tempo_resposta",
-        "data_resposta"
-    )
+    try:
+        print("\n========== INÍCIO gerar_relatorio_respostas_pivotado ==========")
+        print(f"Formato solicitado: {formato}")
 
-    if not respostas.exists():
-        return HttpResponse("Nenhuma resposta relevante encontrada", status=404)
-
-    df = pd.DataFrame(list(respostas))
-
-    # Converter datetime com timezone para naive, para evitar erro no Excel
-    if "data_resposta" in df.columns:
-        df["data_resposta"] = pd.to_datetime(df["data_resposta"]).dt.tz_localize(None)
-
-    # resposta final
-    df["resposta_final"] = df["resposta_opcao"].combine_first(df["resposta_texto"])
-
-    # ---------
-    # NOME EXIBIDO DA PERGUNTA (sem mudar o banco)
-    # title pode ficar em branco, mas no relatório sempre terá um label único.
-    # ---------
-    def build_label(row):
-        title = row.get("question__title")
-        qid = row.get("question__id")
-
-        # normaliza title vazio
-        if title is not None:
-            title = str(title).strip()
-        if title:
-            return title  # mantém título como está
-
-        audio = row.get("question__audio")
-        if audio:
-            audio_name = str(audio).split("/")[-1]  # só nome do arquivo
-            return f"{audio_name} ({qid})"
-
-        return f"Pergunta {qid}"
-
-    df["question_label"] = df.apply(build_label, axis=1)
-
-    # Pivot respostas
-    df_pivot_resp = df.pivot(index="user__username", columns="question_label", values="resposta_final")
-    df_pivot_resp.columns = [f"Resposta - {col}" for col in df_pivot_resp.columns]
-
-    # Pivot tempo
-    df_pivot_tempo = df.pivot(index="user__username", columns="question_label", values="tempo_resposta")
-    df_pivot_tempo = df_pivot_tempo.applymap(lambda x: f"{x:.8f}" if pd.notnull(x) else "")
-    df_pivot_tempo.columns = [f"Tempo (s) - {col}" for col in df_pivot_tempo.columns]
-
-    # Junta
-    df_final = pd.concat([df_pivot_resp, df_pivot_tempo], axis=1).reset_index()
-    df_final.rename(columns={"user__username": "usuario"}, inplace=True)
-
-    if formato == "csv":
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = 'attachment; filename="relatorio_respostas_pivotado.csv"'
-        df_final.to_csv(path_or_buf=response, index=False)
-        return response
-
-    elif formato == "excel":
-        response = HttpResponse(
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        respostas = UserResponse.objects.filter(question__is_relevant=True).values(
+            "user__username",
+            "question__id",
+            "question__title",
+            "question__audio",
+            "resposta_texto",
+            "resposta_opcao",
+            "tempo_resposta",
+            "data_resposta"
         )
-        response["Content-Disposition"] = 'attachment; filename="relatorio_respostas_pivotado.xlsx"'
-        df_final.to_excel(response, index=False, engine="openpyxl")
-        return response
 
-    return HttpResponse("Formato inválido. Use 'csv' ou 'excel'.", status=400)
+        print("Query montada com sucesso.")
 
+        total_respostas = respostas.count()
+        print(f"Total de respostas encontradas: {total_respostas}")
+
+        if total_respostas == 0:
+            print("Nenhuma resposta relevante encontrada.")
+            return HttpResponse("Nenhuma resposta relevante encontrada", status=404)
+
+        respostas_list = list(respostas)
+        print(f"Total convertido para lista: {len(respostas_list)}")
+
+        if respostas_list:
+            print("Primeiro registro:")
+            print(respostas_list[0])
+
+        df = pd.DataFrame(respostas_list)
+        print("DataFrame criado com sucesso.")
+        print(f"Shape inicial do df: {df.shape}")
+        print(f"Colunas do df: {list(df.columns)}")
+
+        if df.empty:
+            print("DataFrame ficou vazio após criação.")
+            return HttpResponse("Nenhuma resposta relevante encontrada", status=404)
+
+        print("Head do DataFrame:")
+        print(df.head(5).to_dict(orient="records"))
+
+        # Converter datetime com timezone para naive, para evitar erro no Excel
+        if "data_resposta" in df.columns:
+            print("Convertendo coluna data_resposta...")
+            print("Valores antes da conversão:")
+            print(df["data_resposta"].head(10).tolist())
+
+            df["data_resposta"] = pd.to_datetime(df["data_resposta"], errors="coerce")
+
+            print("Valores após pd.to_datetime:")
+            print(df["data_resposta"].head(10).tolist())
+
+            try:
+                df["data_resposta"] = df["data_resposta"].dt.tz_localize(None)
+                print("Timezone removido com sucesso.")
+            except Exception as e:
+                print("Erro ao remover timezone de data_resposta:")
+                print(str(e))
+
+        # resposta final
+        print("Montando coluna resposta_final...")
+        print("Exemplo resposta_texto:")
+        print(df["resposta_texto"].head(10).tolist())
+        print("Exemplo resposta_opcao:")
+        print(df["resposta_opcao"].head(10).tolist())
+
+        df["resposta_final"] = df["resposta_opcao"].combine_first(df["resposta_texto"])
+
+        print("Coluna resposta_final criada.")
+        print(df["resposta_final"].head(10).tolist())
+
+        # ---------
+        # NOME EXIBIDO DA PERGUNTA
+        # ---------
+        def build_label(row):
+            title = row.get("question__title")
+            qid = row.get("question__id")
+
+            if title is not None:
+                title = str(title).strip()
+            if title:
+                return title
+
+            audio = row.get("question__audio")
+            if audio:
+                audio_name = str(audio).split("/")[-1]
+                return f"{audio_name} ({qid})"
+
+            return f"Pergunta {qid}"
+
+        print("Montando coluna question_label...")
+        df["question_label"] = df.apply(build_label, axis=1)
+
+        print("Question labels criados com sucesso.")
+        print("Exemplo de labels:")
+        print(df["question_label"].head(20).tolist())
+
+        print("Quantidade de labels únicas:")
+        print(df["question_label"].nunique())
+
+        # Verificar duplicidade que quebra pivot
+        print("Verificando duplicidade por usuário + pergunta...")
+        duplicadas = df[df.duplicated(subset=["user__username", "question_label"], keep=False)]
+
+        print(f"Total de linhas duplicadas nesse critério: {len(duplicadas)}")
+        if not duplicadas.empty:
+            print("DUPLICADAS ENCONTRADAS:")
+            print(duplicadas[
+                ["user__username", "question__id", "question__title", "question_label", "resposta_texto", "resposta_opcao"]
+            ].to_dict(orient="records"))
+
+        # Pivot respostas
+        print("Iniciando pivot de respostas...")
+        df_pivot_resp = df.pivot(
+            index="user__username",
+            columns="question_label",
+            values="resposta_final"
+        )
+        print("Pivot de respostas criado com sucesso.")
+        print(f"Shape df_pivot_resp: {df_pivot_resp.shape}")
+
+        df_pivot_resp.columns = [f"Resposta - {col}" for col in df_pivot_resp.columns]
+        print("Colunas de respostas renomeadas.")
+
+        # Pivot tempo
+        print("Iniciando pivot de tempo...")
+        df_pivot_tempo = df.pivot(
+            index="user__username",
+            columns="question_label",
+            values="tempo_resposta"
+        )
+        print("Pivot de tempo criado com sucesso.")
+        print(f"Shape df_pivot_tempo: {df_pivot_tempo.shape}")
+
+        print("Valores de tempo antes do applymap:")
+        print(df_pivot_tempo.head(10).to_dict())
+
+        def format_tempo(x):
+            if pd.notnull(x):
+                try:
+                    return f"{float(x):.8f}"
+                except Exception as e:
+                    print(f"Erro ao formatar tempo '{x}': {e}")
+                    return str(x)
+            return ""
+
+        df_pivot_tempo = df_pivot_tempo.applymap(format_tempo)
+        print("Formatação de tempo concluída.")
+
+        df_pivot_tempo.columns = [f"Tempo (s) - {col}" for col in df_pivot_tempo.columns]
+        print("Colunas de tempo renomeadas.")
+
+        # Junta
+        print("Concatenando respostas + tempos...")
+        df_final = pd.concat([df_pivot_resp, df_pivot_tempo], axis=1).reset_index()
+        df_final.rename(columns={"user__username": "usuario"}, inplace=True)
+
+        print("DataFrame final criado.")
+        print(f"Shape df_final: {df_final.shape}")
+        print(f"Colunas finais: {list(df_final.columns)}")
+        print("Prévia final:")
+        print(df_final.head(5).to_dict(orient="records"))
+
+        if formato == "csv":
+            print("Gerando CSV...")
+            response = HttpResponse(content_type="text/csv; charset=utf-8")
+            response["Content-Disposition"] = 'attachment; filename="relatorio_respostas_pivotado.csv"'
+            df_final.to_csv(path_or_buf=response, index=False)
+            print("CSV gerado com sucesso.")
+            print("========== FIM gerar_relatorio_respostas_pivotado ==========\n")
+            return response
+
+        elif formato == "excel":
+            print("Gerando Excel...")
+            response = HttpResponse(
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            response["Content-Disposition"] = 'attachment; filename="relatorio_respostas_pivotado.xlsx"'
+            df_final.to_excel(response, index=False, engine="openpyxl")
+            print("Excel gerado com sucesso.")
+            print("========== FIM gerar_relatorio_respostas_pivotado ==========\n")
+            return response
+
+        print("Formato inválido recebido.")
+        return HttpResponse("Formato inválido. Use 'csv' ou 'excel'.", status=400)
+
+    except Exception as e:
+        print("\n========== ERRO EM gerar_relatorio_respostas_pivotado ==========")
+        print(f"Erro: {str(e)}")
+        traceback.print_exc()
+        print("========== FIM ERRO ==========\n")
+        return HttpResponse(f"Erro ao gerar relatório: {str(e)}", status=500)
 
 @api_view(["POST"])
 def registrar_resposta(request):
@@ -435,43 +554,30 @@ def perguntas_do_grupo_usuario(request):
     Útil para a tela de responder perguntas.
     """
     user = request.user
-
-    # Pega só os IDs dos grupos do usuário
-    grupos_ids = list(user.question_groups.values_list("id", flat=True))
-
-    if not grupos_ids:
+    
+    # Obtém os grupos do usuário
+    grupos_do_usuario = user.question_groups.all()
+    
+    if not grupos_do_usuario.exists():
         return Response(
             {"error": "Você não está associado a nenhum grupo de perguntas."},
             status=status.HTTP_404_NOT_FOUND
         )
-
-    # Busca perguntas relevantes dos grupos do usuário
-    # prefetch_related evita N+1 nas opções
-    perguntas_qs = (
-        Question.objects
-        .filter(groups__id__in=grupos_ids, is_relevant=True)
-        .distinct()
-        .prefetch_related("options")
-    )
-
-    # Converte para lista e embaralha em memória
-    perguntas = list(perguntas_qs)
-
-    if not perguntas:
+    
+    # Obtém todas as perguntas dos grupos do usuário
+    perguntas = Question.objects.filter(groups__in=grupos_do_usuario).distinct()
+    # Filtra apenas as perguntas relevantes (opcionalmente) e embaralha a ordem
+    perguntas = perguntas.filter(is_relevant=True).order_by('?')
+    
+    if not perguntas.exists():
         return Response(
             {"message": "Nenhuma pergunta disponível no seu grupo."},
             status=status.HTTP_200_OK
         )
-
-    random.shuffle(perguntas)
-
-    serializer = QuestionSerializer(
-        perguntas,
-        many=True,
-        context={"request": request}
-    )
-
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    # Serializa as perguntas
+    serializer = QuestionSerializer(perguntas, many=True, context={"request": request})
+    return Response(serializer.data, status=200)
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])

@@ -67,6 +67,7 @@ class Option(models.Model):
 class UserResponse(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    group = models.ForeignKey("QuestionGroup", on_delete=models.CASCADE, related_name="responses", null=True, blank=True)
     resposta_texto = models.TextField(blank=True, null=True)
     resposta_opcao = models.CharField(max_length=255, blank=True, null=True)
     tempo_resposta = models.FloatField(blank=True, null=True)  # segundos
@@ -75,6 +76,14 @@ class UserResponse(models.Model):
     def __str__(self):
         # seu código tinha "self.question.texto" mas esse campo não existe
         return f"{self.user.username} → {self.question.title or self.question.id}"
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "question", "group"],
+                name="unique_user_question_group_response",
+            )
+        ]
 
 class QuestionGroup(models.Model):
     """

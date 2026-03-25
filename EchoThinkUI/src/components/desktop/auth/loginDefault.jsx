@@ -19,6 +19,24 @@ const LoginDefault = () => {
   const navigate = useNavigate();
   const [isValid, setIsValid] = useState(null);
 
+  const ensureCsrfToken = async () => {
+    if (csrfToken) return csrfToken;
+
+    try {
+      const response = await fetch(`${API_URL}/csrf/`, {
+        method: "GET",
+        credentials: "include",
+      });
+      const data = await response.json();
+      const token = data?.csrfToken || "";
+      if (token) setCsrfToken(token);
+      return token;
+    } catch (err) {
+      console.error("Erro ao buscar CSRF:", err);
+      return "";
+    }
+  };
+
   const handleTelefoneChange = (e) => {
     let v = e.target.value;
 
@@ -44,22 +62,13 @@ const LoginDefault = () => {
   useEffect(() => {
     const validateSession = async () => {
       try {
-        await fetch(`${API_URL}/csrf/`, {
-          method: "GET",
-          credentials: "include",
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            console.log("Token do backend:", data.csrfToken);
-            setCsrfToken(data.csrfToken);
-          })
-          .catch((err) => console.error("Erro ao buscar CSRF:", err));
+        const token = await ensureCsrfToken();
 
         // Segundo: validar a sessão com CSRF
         const response = await fetch(`${BACKEND_URL}/me/`, {
           method: "GET",
           headers: {
-            "X-CSRFToken": csrfToken,
+            "X-CSRFToken": token,
           },
           credentials: "include",
         });
@@ -99,16 +108,7 @@ const LoginDefault = () => {
   });
 
   useEffect(() => {
-    fetch(`${API_URL}/csrf/`, {
-      method: "GET",
-      credentials: "include",
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Token do backend:", data.csrfToken);
-        setCsrfToken(data.csrfToken);
-      })
-      .catch((err) => console.error("Erro ao buscar CSRF:", err));
+    ensureCsrfToken();
   }, []);
 
   useEffect(() => {
@@ -196,18 +196,21 @@ const LoginDefault = () => {
     RegisterSubmit(e);
   };
 
-  const LoginSubmit = (event) => {
+  const LoginSubmit = async (event) => {
     event.preventDefault();
+    const token = await ensureCsrfToken();
+
     // Verifica se o CSRF token está disponível
-    if (!csrfToken) {
+    if (!token) {
       console.error("CSRF token is not available");
       return;
     }
+
     fetch(`${API_URL}/auth/login/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": csrfToken,
+        "X-CSRFToken": token,
       },
       body: JSON.stringify({
         username: form.username,
@@ -234,10 +237,12 @@ const LoginDefault = () => {
       });
   };
 
-  const RegisterSubmit = (event) => {
+  const RegisterSubmit = async (event) => {
     event.preventDefault();
 
-    if (!csrfToken) {
+    const token = await ensureCsrfToken();
+
+    if (!token) {
       console.error("CSRF token is not available");
       return;
     }
@@ -263,7 +268,7 @@ const LoginDefault = () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": csrfToken,
+        "X-CSRFToken": token,
       },
       body: JSON.stringify(form),
       credentials: "include", // importante para manter sessão e cookie CSRF

@@ -49,6 +49,7 @@ const LoginDefault = () => {
   });
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedQuestions, setSelectedQuestions] = useState([]);
+  const [selectedReportGroupId, setSelectedReportGroupId] = useState("");
 
   // --- util helpers ---
   const extrairNomeArquivo = (url) => {
@@ -446,9 +447,14 @@ const LoginDefault = () => {
   };
 
   const baixarRelatorio = async (formato) => {
+    if (!selectedReportGroupId) {
+      alert("Selecione um grupo antes de gerar o relatório.");
+      return;
+    }
+
     try {
       const response = await fetch(
-        `${API_URL}/questions/relatorio-respostas/${formato}/`,
+        `${API_URL}/questions/grupos/${selectedReportGroupId}/relatorio-respostas/${formato}/`,
         {
           method: "GET",
           credentials: "include",
@@ -463,10 +469,18 @@ const LoginDefault = () => {
 
       const blob = await response.blob();
 
+      const grupoSelecionado = grupos.find(
+        (g) => String(g.id) === String(selectedReportGroupId),
+      );
+      const grupoSlug = (grupoSelecionado?.name || `grupo_${selectedReportGroupId}`)
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_\-]/g, "");
+
       const nomeArquivo =
         formato === "excel"
-          ? "relatorio_respostas.xlsx"
-          : "relatorio_respostas.csv";
+          ? `relatorio_respostas_${grupoSlug}.xlsx`
+          : `relatorio_respostas_${grupoSlug}.csv`;
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -574,7 +588,14 @@ const LoginDefault = () => {
     e.preventDefault();
     resetViews();
     setrelatorio(true);
+    fetchGrupos();
   };
+
+  useEffect(() => {
+    if (grupos.length > 0 && !selectedReportGroupId) {
+      setSelectedReportGroupId(String(grupos[0].id));
+    }
+  }, [grupos, selectedReportGroupId]);
 
   const ShowAddPerguntas = (e) => {
     e.preventDefault();
@@ -721,6 +742,24 @@ const LoginDefault = () => {
                       <h1 className="text-white text-lg sm:text-2xl font-bold">
                         Relatório
                       </h1>
+
+                      <div className="w-full">
+                        <label className="block text-white text-xs sm:text-sm mb-1">
+                          Selecionar grupo
+                        </label>
+                        <select
+                          className="w-full p-2 rounded bg-gray-600 text-white border border-gray-500"
+                          value={selectedReportGroupId}
+                          onChange={(e) => setSelectedReportGroupId(e.target.value)}
+                        >
+                          {grupos.length === 0 && <option value="">Nenhum grupo disponível</option>}
+                          {grupos.map((grupo) => (
+                            <option key={grupo.id} value={grupo.id}>
+                              {grupo.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
                       <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-2 w-full">
                         <button

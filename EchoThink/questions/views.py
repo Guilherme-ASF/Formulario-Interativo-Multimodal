@@ -8,7 +8,13 @@ import traceback
 @permission_classes([IsAuthenticated])
 def respondidas_usuario(request):
     user = request.user
-    respondidas = list(UserResponse.objects.filter(user=user).values_list("question_id", flat=True))
+    group_id = request.query_params.get("group_id")
+
+    respostas = UserResponse.objects.filter(user=user)
+    if group_id:
+        respostas = respostas.filter(group_id=group_id)
+
+    respondidas = list(respostas.values_list("question_id", flat=True))
     return Response({"respondidas": respondidas})
 import os
 from rest_framework.decorators import api_view, parser_classes
@@ -173,12 +179,23 @@ def marcar_relevante(request, pk):
 
     return Response({"mensagem": "Relevância atualizada com sucesso"})
 
-def gerar_relatorio_respostas_pivotado(request, formato):
+def gerar_relatorio_respostas_pivotado(request, formato, group_id=None):
     try:
-        print("\n========== INÍCIO gerar_relatorio_respostas_pivotado ==========")
-        print(f"Formato solicitado: {formato}")
+        if formato not in ["csv", "excel"]:
+            return HttpResponse("Formato inválido. Use 'csv' ou 'excel'.", status=400)
 
-        respostas = UserResponse.objects.filter(question__is_relevant=True).values(
+        if group_id is None:
+            group_id = request.query_params.get("group_id")
+
+        if not group_id:
+            return HttpResponse("group_id é obrigatório para gerar relatório por grupo.", status=400)
+
+        try:
+            grupo = QuestionGroup.objects.get(pk=group_id)
+        except QuestionGroup.DoesNotExist:
+            return HttpResponse("Grupo não encontrado.", status=404)
+
+        respostas = UserResponse.objects.filter(group_id=group_id, question__is_relevant=True).values(
             "user__username",
             "question__id",
             "question__title",
@@ -186,78 +203,20 @@ def gerar_relatorio_respostas_pivotado(request, formato):
             "resposta_texto",
             "resposta_opcao",
             "tempo_resposta",
-            "data_resposta"
+            "data_resposta",
         )
 
-        print("Query montada com sucesso.")
-
-        total_respostas = respostas.count()
-        print(f"Total de respostas encontradas: {total_respostas}")
-
-        if total_respostas == 0:
-            print("Nenhuma resposta relevante encontrada.")
+        if not respostas.exists():
             return HttpResponse("Nenhuma resposta relevante encontrada", status=404)
 
-        respostas_list = list(respostas)
-        print(f"Total convertido para lista: {len(respostas_list)}")
-
-        if respostas_list:
-            print("Primeiro registro:")
-            print(respostas_list[0])
-
-        df = pd.DataFrame(respostas_list)
-        print("DataFrame criado com sucesso.")
-        print(f"Shape inicial do df: {df.shape}")
-        print(f"Colunas do df: {list(df.columns)}")
-
-        if df.empty:
-            print("DataFrame ficou vazio após criação.")
-            return HttpResponse("Nenhuma resposta relevante encontrada", status=404)
-
-        print("Head do DataFrame:")
-        print(df.head(5).to_dict(orient="records"))
-
-        # Converter datetime com timezone para naive, para evitar erro no Excel
-        if "data_resposta" in df.columns:
-            print("Convertendo coluna data_resposta...")
-            print("Valores antes da conversão:")
-            print(df["data_resposta"].head(10).tolist())
-
-            df["data_resposta"] = pd.to_datetime(df["data_resposta"], errors="coerce")
-
-            print("Valores após pd.to_datetime:")
-            print(df["data_resposta"].head(10).tolist())
-
-            try:
-                df["data_resposta"] = df["data_resposta"].dt.tz_localize(None)
-                print("Timezone removido com sucesso.")
-            except Exception as e:
-                print("Erro ao remover timezone de data_resposta:")
-                print(str(e))
-
-        # resposta final
-        print("Montando coluna resposta_final...")
-        print("Exemplo resposta_texto:")
-        print(df["resposta_texto"].head(10).tolist())
-        print("Exemplo resposta_opcao:")
-        print(df["resposta_opcao"].head(10).tolist())
-
+        df = pd.DataFrame(list(respostas))
         df["resposta_final"] = df["resposta_opcao"].combine_first(df["resposta_texto"])
 
-        print("Coluna resposta_final criada.")
-        print(df["resposta_final"].head(10).tolist())
-
-        # ---------
-        # NOME EXIBIDO DA PERGUNTA
-        # ---------
         def build_label(row):
-            title = row.get("question__title")
+            title = (row.get("question__title") or "").strip()
             qid = row.get("question__id")
-
-            if title is not None:
-                title = str(title).strip()
             if title:
-                return title
+                return f"{title} ({qid})"
 
             audio = row.get("question__audio")
             if audio:
@@ -266,108 +225,56 @@ def gerar_relatorio_respostas_pivotado(request, formato):
 
             return f"Pergunta {qid}"
 
-        print("Montando coluna question_label...")
         df["question_label"] = df.apply(build_label, axis=1)
 
-        print("Question labels criados com sucesso.")
-        print("Exemplo de labels:")
-        print(df["question_label"].head(20).tolist())
-
-        print("Quantidade de labels únicas:")
-        print(df["question_label"].nunique())
-
-        # Verificar duplicidade que quebra pivot
-        print("Verificando duplicidade por usuário + pergunta...")
-        duplicadas = df[df.duplicated(subset=["user__username", "question_label"], keep=False)]
-
-        print(f"Total de linhas duplicadas nesse critério: {len(duplicadas)}")
-        if not duplicadas.empty:
-            print("DUPLICADAS ENCONTRADAS:")
-            print(duplicadas[
-                ["user__username", "question__id", "question__title", "question_label", "resposta_texto", "resposta_opcao"]
-            ].to_dict(orient="records"))
-
-        # Pivot respostas
-        print("Iniciando pivot de respostas...")
-        df_pivot_resp = df.pivot(
+        df_pivot_resp = df.pivot_table(
             index="user__username",
             columns="question_label",
-            values="resposta_final"
+            values="resposta_final",
+            aggfunc="first",
         )
-        print("Pivot de respostas criado com sucesso.")
-        print(f"Shape df_pivot_resp: {df_pivot_resp.shape}")
-
         df_pivot_resp.columns = [f"Resposta - {col}" for col in df_pivot_resp.columns]
-        print("Colunas de respostas renomeadas.")
 
-        # Pivot tempo
-        print("Iniciando pivot de tempo...")
-        df_pivot_tempo = df.pivot(
+        df_pivot_tempo = df.pivot_table(
             index="user__username",
             columns="question_label",
-            values="tempo_resposta"
+            values="tempo_resposta",
+            aggfunc="first",
         )
-        print("Pivot de tempo criado com sucesso.")
-        print(f"Shape df_pivot_tempo: {df_pivot_tempo.shape}")
 
-        print("Valores de tempo antes do applymap:")
-        print(df_pivot_tempo.head(10).to_dict())
-
-        def format_tempo(x):
-            if pd.notnull(x):
+        def format_tempo(value):
+            if pd.notnull(value):
                 try:
-                    return f"{float(x):.8f}"
-                except Exception as e:
-                    print(f"Erro ao formatar tempo '{x}': {e}")
-                    return str(x)
+                    return f"{float(value):.8f}"
+                except Exception:
+                    return str(value)
             return ""
 
         df_pivot_tempo = df_pivot_tempo.applymap(format_tempo)
-        print("Formatação de tempo concluída.")
-
         df_pivot_tempo.columns = [f"Tempo (s) - {col}" for col in df_pivot_tempo.columns]
-        print("Colunas de tempo renomeadas.")
 
-        # Junta
-        print("Concatenando respostas + tempos...")
         df_final = pd.concat([df_pivot_resp, df_pivot_tempo], axis=1).reset_index()
         df_final.rename(columns={"user__username": "usuario"}, inplace=True)
 
-        print("DataFrame final criado.")
-        print(f"Shape df_final: {df_final.shape}")
-        print(f"Colunas finais: {list(df_final.columns)}")
-        print("Prévia final:")
-        print(df_final.head(5).to_dict(orient="records"))
-
         if formato == "csv":
-            print("Gerando CSV...")
             response = HttpResponse(content_type="text/csv; charset=utf-8")
-            response["Content-Disposition"] = 'attachment; filename="relatorio_respostas_pivotado.csv"'
+            filename = f"relatorio_respostas_grupo_{grupo.id}.csv"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
             df_final.to_csv(path_or_buf=response, index=False)
-            print("CSV gerado com sucesso.")
-            print("========== FIM gerar_relatorio_respostas_pivotado ==========\n")
             return response
 
-        elif formato == "excel":
-            print("Gerando Excel...")
-            response = HttpResponse(
-                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            response["Content-Disposition"] = 'attachment; filename="relatorio_respostas_pivotado.xlsx"'
-            df_final.to_excel(response, index=False, engine="openpyxl")
-            print("Excel gerado com sucesso.")
-            print("========== FIM gerar_relatorio_respostas_pivotado ==========\n")
-            return response
-
-        print("Formato inválido recebido.")
-        return HttpResponse("Formato inválido. Use 'csv' ou 'excel'.", status=400)
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        filename = f"relatorio_respostas_grupo_{grupo.id}.xlsx"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        df_final.to_excel(response, index=False, engine="openpyxl")
+        return response
 
     except Exception as e:
-        print("\n========== ERRO EM gerar_relatorio_respostas_pivotado ==========")
-        print(f"Erro: {str(e)}")
         traceback.print_exc()
-        print("========== FIM ERRO ==========\n")
         return HttpResponse(f"Erro ao gerar relatório: {str(e)}", status=500)
+
 
 @api_view(["POST"])
 def registrar_resposta(request):
@@ -548,25 +455,33 @@ def remover_pergunta_do_grupo(request, pk):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def perguntas_do_grupo_usuario(request):
+def perguntas_do_grupo_usuario(request, group_id=None):
     """
     Retorna apenas as perguntas dos grupos aos quais o usuário está associado.
     Útil para a tela de responder perguntas.
     """
     user = request.user
-    
-    # Obtém os grupos do usuário
-    grupos_do_usuario = user.question_groups.all()
-    
-    if not grupos_do_usuario.exists():
+    if group_id is None:
+        group_id = request.query_params.get("group_id")
+
+    if not group_id:
         return Response(
-            {"error": "Você não está associado a nenhum grupo de perguntas."},
-            status=status.HTTP_404_NOT_FOUND
+            {"error": "group_id é obrigatório para carregar perguntas do grupo."},
+            status=status.HTTP_400_BAD_REQUEST,
         )
-    
-    # Obtém todas as perguntas dos grupos do usuário
-    perguntas = Question.objects.filter(groups__in=grupos_do_usuario).distinct()
-    # Filtra apenas as perguntas relevantes (opcionalmente) e embaralha a ordem
+
+    try:
+        grupo = QuestionGroup.objects.get(pk=group_id)
+    except QuestionGroup.DoesNotExist:
+        return Response({"error": "Grupo não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not grupo.users.filter(id=user.id).exists():
+        return Response(
+            {"error": "Você não pertence a este grupo."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    perguntas = Question.objects.filter(groups=grupo)
     perguntas = perguntas.filter(is_relevant=True).order_by('?')
     
     if not perguntas.exists():
@@ -584,16 +499,24 @@ def perguntas_do_grupo_usuario(request):
 def registrar_varias_respostas(request):
     user = request.user
     respostas = request.data.get("respostas", [])
+    group_id = request.data.get("group_id")
+
+    if not group_id:
+        return Response({"error": "group_id é obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        grupo = QuestionGroup.objects.get(pk=group_id)
+    except QuestionGroup.DoesNotExist:
+        return Response({"error": "Grupo não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not grupo.users.filter(id=user.id).exists():
+        return Response({"error": "Você não pertence a este grupo."}, status=status.HTTP_403_FORBIDDEN)
 
     # Pega os IDs das perguntas enviadas
     question_ids = [r.get("question") for r in respostas if r.get("question") is not None]
 
     # ==================== VALIDAÇÃO: PERGUNTAS DO GRUPO DO USUÁRIO ====================
-    # Obtém os grupos do usuário
-    grupos_do_usuario = user.question_groups.all()
-    
-    # Obtém todas as perguntas dos grupos do usuário
-    perguntas_permitidas = Question.objects.filter(groups__in=grupos_do_usuario).distinct()
+    perguntas_permitidas = Question.objects.filter(groups=grupo).distinct()
     perguntas_permitidas_ids = set(perguntas_permitidas.values_list('id', flat=True))
     
     # Verifica se todas as perguntas estão nos grupos do usuário
@@ -612,7 +535,7 @@ def registrar_varias_respostas(request):
     # Verifica se já existem respostas do usuário para essas perguntas
     # Verifica se já existe resposta para cada pergunta
     perguntas_com_resposta = set(
-        UserResponse.objects.filter(user=user, question_id__in=question_ids)
+        UserResponse.objects.filter(user=user, group_id=group_id, question_id__in=question_ids)
         .values_list('question_id', flat=True)
     )
     perguntas_nao_respondidas = [qid for qid in question_ids if qid not in perguntas_com_resposta]
@@ -633,6 +556,7 @@ def registrar_varias_respostas(request):
     # Adiciona o usuário nos dados das respostas
     for resposta in respostas:
         resposta["user"] = user.id
+        resposta["group"] = grupo.id
 
         # Força tempo_resposta com até 8 casas decimais
         if "tempo_resposta" in resposta and resposta["tempo_resposta"] is not None:

@@ -7,8 +7,10 @@ urlpatterns = [
     path("deletar-pergunta/<int:pk>/", views.deletar_pergunta, name="deletar_pergunta"),
     path('marcar-relevante/<int:pk>/', views.marcar_relevante, name='marcar-relevante'),
     path('relatorio-respostas/<str:formato>/', views.gerar_relatorio_respostas_pivotado, name='gerar-relatorio-respostas'),
+    path('grupos/<int:group_id>/relatorio-respostas/<str:formato>/', views.gerar_relatorio_respostas_pivotado, name='gerar-relatorio-respostas-grupo'),
     path("responder-multiplo/", views.registrar_varias_respostas, name="registrar-varias-respostas"),
     path("perguntas-do-grupo/", views.perguntas_do_grupo_usuario, name="perguntas_do_grupo_usuario"),
+    path("grupos/<int:group_id>/perguntas/", views.perguntas_do_grupo_usuario, name="perguntas_do_grupo_usuario_por_grupo"),
     path("respondidas-usuario/", views.respondidas_usuario, name="respondidas_usuario"),
     
     # Question Group URLs

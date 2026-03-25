@@ -19,14 +19,32 @@ const LoginDefault = () => {
   const [IndicePergunta, setIndicePergunta] = useState(0);
 
   const [ListaPerguntas, setListaPerguntas] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+
+  const fetchGruposDoUsuario = async () => {
+    const response = await fetch(`${API_URL}/questions/grupos/do-usuario/`, {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error("Erro ao carregar grupos do usuário");
+    }
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error("Nenhum grupo disponível para o usuário.");
+    }
+    setSelectedGroupId(String(data[0].id));
+    return String(data[0].id);
+  };
 
   /* --------------------------
      Carrega perguntas do grupo do usuário
      -------------------------- */
   const fetchPerguntas = async () => {
     try {
+      const groupId = selectedGroupId || (await fetchGruposDoUsuario());
       const response = await fetch(
-        `${API_URL}/questions/perguntas-do-grupo/`,
+        `${API_URL}/questions/grupos/${groupId}/perguntas/`,
         {
           method: "GET",
           credentials: "include",
@@ -92,12 +110,21 @@ const LoginDefault = () => {
 
   const enviarRespostas = async (todasRespostas) => {
     try {
-      const response = await fetch(`${API_URL}/salvar-respostas`, {
+      const payloadArray = todasRespostas.map((r) => ({
+        question: r.perguntaId,
+        resposta_texto: r.resposta,
+        resposta_opcao: r.resposta,
+        tempo_resposta: r.tempoEmSegundos,
+      }));
+
+      const response = await fetch(`${API_URL}/questions/responder-multiplo/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
         },
-        body: JSON.stringify(todasRespostas),
+        credentials: "include",
+        body: JSON.stringify({ group_id: selectedGroupId, respostas: payloadArray }),
       });
       if (response.ok) {
         alert("Respostas enviadas com sucesso!");

@@ -19,6 +19,8 @@ const LoginDefault = () => {
   const [startTime, setStartTime] = useState(null);
   const [IndicePergunta, setIndicePergunta] = useState(0);
   const [ListaPerguntas, setListaPerguntas] = useState([]);
+  const [gruposUsuario, setGruposUsuario] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
   const [isValid, setIsValid] = useState(null);
   const [indiceTela, setIndiceTela] = useState(0);
   const [mensagemErro, setMensagemErro] = useState("");
@@ -115,6 +117,12 @@ const LoginDefault = () => {
 
   const ShowPerguntas = (event) => {
     event.preventDefault();
+
+    if (!selectedGroupId) {
+      setMensagemErro("Selecione um grupo para iniciar o questionário.");
+      return;
+    }
+
     setInstrucao(false);
     setPerguntas(true);
 
@@ -183,7 +191,7 @@ const LoginDefault = () => {
     };
     loadImages();
 
-    fetchPerguntas();
+    fetchGruposDoUsuario();
 
     // tentar setar CSRF cookie via helper (se necessário)
     try {
@@ -194,14 +202,49 @@ const LoginDefault = () => {
     }
   }, [Icon]);
 
+  const fetchGruposDoUsuario = async () => {
+    try {
+      const response = await fetch(`${API_URL}/questions/grupos/do-usuario/`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        setMensagemErro("Erro ao carregar grupos do usuário.");
+        return;
+      }
+
+      const data = await response.json();
+      const grupos = Array.isArray(data) ? data : [];
+      setGruposUsuario(grupos);
+
+      if (grupos.length === 0) {
+        setMensagemErro("Você não está associado a nenhum grupo.");
+        return;
+      }
+
+      const defaultGroupId = String(grupos[0].id);
+      setSelectedGroupId((prev) => prev || defaultGroupId);
+    } catch (error) {
+      console.error(error);
+      setMensagemErro("Erro ao carregar grupos do usuário.");
+    }
+  };
+
   /* --------------------------
-     Carrega perguntas do grupo do usuário
+     Carrega perguntas do grupo selecionado
      -------------------------- */
   const fetchPerguntas = async () => {
+    if (!selectedGroupId) {
+      setListaPerguntas([]);
+      setRespondidas([]);
+      return;
+    }
+
     try {
       // Busca perguntas do grupo
       const response = await fetch(
-        `${API_URL}/questions/perguntas-do-grupo/`,
+        `${API_URL}/questions/grupos/${selectedGroupId}/perguntas/`,
         {
           method: "GET",
           credentials: "include",
@@ -237,7 +280,7 @@ const LoginDefault = () => {
       setIndicePergunta(0);
 
       // Busca IDs das perguntas já respondidas pelo usuário
-      const respRespondidas = await fetch(`${API_URL}/questions/respondidas-usuario/`, {
+      const respRespondidas = await fetch(`${API_URL}/questions/respondidas-usuario/?group_id=${selectedGroupId}`, {
         method: "GET",
         credentials: "include",
       });
@@ -256,6 +299,10 @@ const LoginDefault = () => {
       setError(true);
     }
   };
+
+  useEffect(() => {
+    fetchPerguntas();
+  }, [selectedGroupId]);
 
   /* --------------------------
      Controle de teclado (1-5)
@@ -424,13 +471,14 @@ const LoginDefault = () => {
   const enviarRespostas = async (respostasParaEnviar = null) => {
     const payloadArray = (respostasParaEnviar ?? respostas).map((r) => ({
       user: 1,
+      group: selectedGroupId,
       question: r.perguntaId,
       resposta_texto: r.resposta,
       resposta_opcao: r.resposta,
       tempo_resposta: (r.tempoEmMilissegundos / 1000).toFixed(8),
     }));
 
-    const payload = { respostas: payloadArray };
+    const payload = { group_id: selectedGroupId, respostas: payloadArray };
 
     try {
       console.log("Enviando respostas:", payload);
@@ -631,6 +679,21 @@ const LoginDefault = () => {
                 </div>
 
                 <div className="text-center text-white flex flex-col gap-2">
+                  <div className="px-1 sm:px-4">
+                    <label className="block text-left text-sm mb-1">Grupo</label>
+                    <select
+                      className="w-full rounded p-2 text-black"
+                      value={selectedGroupId}
+                      onChange={(e) => setSelectedGroupId(e.target.value)}
+                    >
+                      {gruposUsuario.map((grupo) => (
+                        <option key={grupo.id} value={grupo.id}>
+                          {grupo.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <h1 className="text-xl sm:text-2xl font-bold mb-1">
                     {telas[indiceTela].titulo}
                   </h1>

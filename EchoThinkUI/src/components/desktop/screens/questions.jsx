@@ -119,7 +119,7 @@ const LoginDefault = () => {
     event.preventDefault();
 
     if (!selectedGroupId) {
-      setMensagemErro("Selecione um grupo para iniciar o questionário.");
+      setMensagemErro("Aguarde, estamos preparando suas perguntas.");
       return;
     }
 
@@ -679,20 +679,6 @@ const LoginDefault = () => {
                 </div>
 
                 <div className="text-center text-white flex flex-col gap-2">
-                  <div className="px-1 sm:px-4">
-                    <label className="block text-left text-sm mb-1">Grupo</label>
-                    <select
-                      className="w-full rounded p-2 text-black"
-                      value={selectedGroupId}
-                      onChange={(e) => setSelectedGroupId(e.target.value)}
-                    >
-                      {gruposUsuario.map((grupo) => (
-                        <option key={grupo.id} value={grupo.id}>
-                          {grupo.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
 
                   <h1 className="text-xl sm:text-2xl font-bold mb-1">
                     {telas[indiceTela].titulo}
